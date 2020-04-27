@@ -1,0 +1,718 @@
+---
+title: "Hemorrhage Detection"
+author: "Lilian De Rivera / Swetha Kalla"
+date: "4/27/2020"
+output: 
+ ioslides_presentation:
+    css: project.css
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(dplyr)
+library(readxl)
+library(stringr)
+library(tidyr)
+library(shiny)
+library(ggplot2)
+library(DT)
+library(reshape)
+library(caret)
+library(knitr)
+library(oro.dicom)
+library(pROC)
+library(rsconnect)
+```
+```{r}
+# loading the datasets
+cu <- read_excel("labels_V2.xlsx")
+# summary
+any <- cu %>% filter(any==1)
+notany <- cu %>% filter(any == 0)
+epidural <- cu %>% filter(epidural==1 )
+intraparenchymal <- cu %>% filter(intraparenchymal==1 )
+intraventricular <- cu %>% filter(intraventricular==1 )
+subarachnoid <- cu%>% filter(subarachnoid==1 )
+subdural <- cu%>% filter(subdural==1 )
+# 
+annot1 = cu %>% filter(epidural + intraparenchymal+ intraventricular + subarachnoid + subarachnoid == 1 )
+annot2 = cu %>% filter(epidural + intraparenchymal+ intraventricular + subarachnoid + subarachnoid > 1 )
+annot0 = notany
+```
+```{r}
+res <- c( nrow(any), nrow(epidural), nrow(intraparenchymal), nrow(intraventricular), nrow(subarachnoid), nrow(subdural) )
+tit_res <- c('None','Epidural', 'Intraparenchymal', 'Intraventricular', 'Subarachnoid', 'Subdural')
+annot_x <- c(nrow(annot0), nrow(annot1), nrow(annot2) )
+tit_annot <- c('0 Annot.','1 Annot.','+1 Annot.')
+
+summarytable <- matrix(c(nrow(cu), nrow(epidural), nrow(intraparenchymal), nrow(intraventricular), nrow(subarachnoid), nrow(subdural), nrow(annot0), nrow(annot1), nrow(annot2)), ncol=1, byrow =TRUE)
+
+rownames(summarytable)<-c('Total Rows', 'Epidural', 'Intraparenchymal', 'Intraventricular', 'Subarachnoid', 'Subdural', '0 Annotation', '1 Annotation', '+1 Annotation')
+
+colnames(summarytable)<-c('No.Images')
+
+summarytable <- as.table(summarytable)
+
+```
+```{r}
+
+# Resutls for Model 1
+
+tloss <- read.csv('train_loss_hist1.csv')
+vloss <- read.csv('valid_loss_hist1.csv')
+tbloss <- read.csv('train_loss_hist_item1.csv')
+vbloss <- read.csv('valid_loss_hist_item1.csv')
+target <- read.csv('target_labels1.csv')
+predicted <-read.csv('pred_labels_per1.csv')
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# Results for Model 2
+
+tloss2 <- read.csv('train_loss_hist2.csv')
+vloss2 <- read.csv('valid_loss_hist2.csv')
+tbloss2 <- read.csv('train_loss_hist_item2.csv')
+vbloss2 <- read.csv('valid_loss_hist_item2.csv')
+target2 <- read.csv('target_labels2.csv')
+predicted2 <-read.csv('pred_labels_per2.csv')
+
+```
+
+
+## Introduction
+### Machine Learning in Medicine
+
+- Tele - Medicine
+- Image Recognition
+    - Diagnostics on Cancer Cells
+    - Diagnostics on MRI Images
+        - **Pulmonary deseases**
+        - **Cerebral Tumors** 
+    
+
+## Hemorrhage Detection and Subtypes
+```{r}
+renderImage({
+   list(src = "Hemorrhage.png", contentType = 'image/png',width = 750, height = 500,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+  
+
+```
+
+
+## Problem Definition
+
+**Classify the type of tumor in a MRI Image base on the images presented in the trainning set**
+
+## Project Planning 
+
+```{r}
+renderImage({
+   list(src = "Project Planning.png", contentType = 'image/png',width = 800, height = 500,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+  
+
+```
+
+
+## EDA IMAGES
+
+```{r}
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Annotated Images",
+             plotOutput("plot1")
+             ),
+    tabPanel("Images by Type",
+             plotOutput("plot2")
+             ),
+    tabPanel("Summary Images",
+             tableOutput("table1")
+             ),
+    tabPanel("Brain Tumors",
+                imageOutput("brain")
+        )
+  )
+)
+server <- function(input, output, session){
+    output$plot1 <- renderPlot({
+         b<-barplot(annot_x/1000, names.arg = tit_annot, cex.names=0.8, las=2)
+         text(x=b, y= 150, labels=as.character(annot_x))
+    })
+    output$plot2 <- renderPlot({
+         b<-barplot(res/1000, names.arg = tit_res, cex.names=0.8, las=2)
+         text(x=b, y= 5, labels=as.character(res))
+    })
+    output$table1<- renderTable ({
+     
+       summarytable
+    })
+    
+    output$brain <- renderImage({
+           list(src = "Brainfinal.png", contentType = 'image/png',width = 700, height = 500,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+
+  
+
+    
+    }
+shinyApp(ui = ui, server = server)
+
+
+```
+
+## Research
+
+- **A CNN trainned on a finer disease classes perform better than done trained ddirectly on several classess.**
+
+*Dermatologist- level classification of skin cancer with deep neural networks. by A. Esteva, B. Kuprel, and others.(2017) doi:10.1039/nature2106. page 116.*
+
+
+- **Networks that include Spatial Transformation Networks can transform regions to a canonical, expected pose to simplify recognition in the following layer.**
+
+*Spatial Trannsformed Networks by M.Jadergerg, K. Simonyan, and others. Google DeepMind UK.(2016)*
+
+##  Prototype Data Augmentation  ( Scope )
+
+- Only a subset of images will be used for the prototype
+    - 500 Images per class
+    - 1000 Images annotated as with tumor 
+    - balanced dataset for training
+    - 75% training 25% por validation
+    
+- A subset of balance dataset will be used for testing 
+    - 100 images per class
+    - 200 images annotated with tumor and no tumor
+    
+## Model Architecture
+```{r}
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Ensemble_1",
+             imageOutput("image1")
+             ),
+    tabPanel("Ensemble_2",
+             imageOutput("image2")
+             ),
+    tabPanel("STN",
+             imageOutput("STN")
+             ),
+    tabPanel("STN-Transformation",
+             imageOutput("STNR")
+             )
+  )
+)
+server <- function(input, output, session){
+    output$image1 <- renderImage({
+    
+          list(src = "model1ml2v2.png", contentType = 'image/png',width = 750, height = 450,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+
+    output$image2 <- renderImage({
+    
+          list(src = "model2ml2.png", contentType = 'image/png',width = 750, height = 450,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+    
+    output$STN <- renderImage({
+    
+          list(src = "STN.png", contentType = 'image/png',width = 700, height = 425,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+
+    output$STNR <- renderImage({
+    
+          list(src = "TransformedImages.png", contentType = 'image/png',width = 750, height = 450,
+               alt = "This is alternate text")
+    }, deleteFile = FALSE)
+    
+    }
+shinyApp(ui = ui, server = server)
+
+```
+
+## Prototype
+
+- **pyTorch** is used the models and deliver the metrics
+    - Convenience due to recent use 
+- **AWS** is used as a GPU and python providers
+    - Avalilability
+- **Data Loader** that reads into memory a batch of images
+- **Shiny** is used to process the metrics and visualizations
+    - Easy to feed and faster to generate results
+- **Pycharm** is used as a python editor
+- **vGG16** model for transfer learning, only 16 layers
+    - If the model works as expected then it will be changed to *inceptionv3* for phase II
+
+
+## Model-1 Metrics ( Single Label) 
+
+```{r}
+
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Loss Function",
+             splitLayout(
+               plotOutput("plot1")
+               ,
+               plotOutput("plot2")          
+               )
+             
+             ),
+    tabPanel("Loss by Epoch",
+             sidebarLayout(
+              sidebarPanel(
+                selectInput("epoch","No.Epoch", c(1,2,3,4,5,6,7,8,9,10,11,12,13,14),multiple = FALSE)
+              ),
+              mainPanel(
+                splitLayout(
+                  plotOutput("plot3"),
+                  plotOutput("plot4")
+                   )
+                )
+             )
+             
+        ),
+     tabPanel("Accuracy",
+         sidebarLayout(
+           sidebarPanel(
+             selectInput("epoch2","No.Epoch", c(1,2,3,4,5,6,7,8,9,10,11,12,13,14),multiple = FALSE)
+           ),
+           mainPanel(
+             
+              splitLayout(
+                  plotOutput("plot5"),
+                  plotOutput("plot6")
+                   )
+           )
+         )
+               
+      ),
+    tabPanel("Test Results",
+        verticalLayout(
+          fluidRow(
+            
+            column(width=4,
+                   plotOutput("roc1")
+                   ),
+            column(width=4,  
+                   plotOutput("roc2")
+                   ),
+            column(width=4,
+                   plotOutput("roc3")
+                   )
+          ),
+          
+          fluidRow(
+            column(width=4,
+                   plotOutput("roc4")
+                   ),
+            column(width=4,  
+                   plotOutput("roc5")
+                   ),
+            column(width=4,
+                   plotOutput("roc6")
+                   )
+          )
+        )
+      
+    )
+     
+  )
+)
+server <- function(input, output, session){
+    output$plot1 <- renderPlot({
+          ggplot(tloss, aes( x = epoch, y = train_loss))+ geom_line()+ ggtitle("Train Loss Function")
+          })
+    output$plot2 <- renderPlot({
+        ggplot(vloss, aes( x = epoch, y = valid_loss))+ geom_line()+ ggtitle("Valid Loss Function")
+    })
+    
+    output$plot4 <- renderPlot({
+        xtbloss <- tbloss %>% filter(epoch == input$epoch)
+        ggplot(xtbloss, aes( x = batch, y = loss))+ geom_line() + ggtitle("Valid Loss")
+    })
+
+    output$plot3 <- renderPlot({
+        xvbloss <- vbloss %>% filter(epoch == input$epoch)
+        ggplot(xvbloss, aes( x = batch, y = loss))+ geom_line() + ggtitle("Train Loss")
+    })
+    
+    output$plot6 <- renderPlot({
+        xtbloss <- tbloss %>% filter(epoch == input$epoch2)
+        ggplot(xtbloss, aes( x = batch, y = acc))+ geom_line() + ggtitle("By Epoch")
+    })
+
+    output$plot5 <- renderPlot({
+       ggplot(vloss, aes( x = epoch, y = valid_acc))+ geom_line()+ ggtitle("By Batch")
+    })
+    
+    output$roc1 <- renderPlot({
+      pROC_any <- roc(
+            target$any, predicted$any,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_any <- ci.se(pROC_any)
+
+      
+       title(main="Any")
+       plot(sens.ci_any, type="shape", col="lightblue")
+
+    })
+    
+    output$roc2 <- renderPlot({
+      pROC_epidural <- roc(
+            target$epidural, predicted$epidural,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_epidural <- ci.se(pROC_epidural)
+
+      
+       title(main="Epidural")
+       plot(sens.ci_epidural, type="shape", col="lightblue")
+
+    })
+    
+    output$roc3 <- renderPlot({
+      pROC_intraparenchymal <- roc(
+            target$intraparenchymal, predicted$intraparenchymal,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_intraparenchymal <- ci.se(pROC_intraparenchymal)
+
+      
+       title(main="Intraparenchymal")
+       plot(sens.ci_intraparenchymal, type="shape", col="lightblue")
+
+    })
+
+    output$roc4 <- renderPlot({
+      pROC_intraventricular <- roc(
+            target$intraventricular, predicted$intraventricular,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_intraventricular <- ci.se(pROC_intraventricular)
+
+      
+       title(main="Intraventricular")
+       plot(sens.ci_intraventricular, type="shape", col="lightblue")
+
+    })
+
+    output$roc5 <- renderPlot({
+      pROC_subarachnoid <- roc(
+            target$subarachnoid, predicted$subarachnoid,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_subarachnoid <- ci.se(pROC_subarachnoid)
+
+      
+       title(main="Subarachnoid")
+       plot(sens.ci_subarachnoid, type="shape", col="lightblue")
+
+    })
+
+    output$roc6 <- renderPlot({
+      pROC_subdural <- roc(
+            target$subdural, predicted$subdural,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_subdural <- ci.se(pROC_subdural)
+
+      
+       title(main="Subdural")
+       plot(sens.ci_subdural, type="shape", col="lightblue")
+
+    })
+            
+    }
+shinyApp(ui = ui, server = server)
+
+
+```
+
+## Model-2 Metrics (Multilabel)
+
+```{r}
+
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Loss Function",
+             splitLayout(
+               plotOutput("plot1")
+               ,
+               plotOutput("plot2")          
+               )
+             
+             ),
+    tabPanel("Loss by Epoch",
+             sidebarLayout(
+              sidebarPanel(
+                selectInput("epoch","No.Epoch", c(1,2,3,4,5,6,7,8,9,10,11,12),multiple = FALSE)
+              ),
+              mainPanel(
+                splitLayout(
+                  plotOutput("plot3"),
+                  plotOutput("plot4")
+                   )
+                )
+             )
+             
+        ),
+     tabPanel("Accuracy",
+         sidebarLayout(
+           sidebarPanel(
+             selectInput("epoch2","No.Epoch", c(1,2,3,4,5,6,7,8,9,10,11,12),multiple = FALSE)
+           ),
+           mainPanel(
+             
+              splitLayout(
+                  plotOutput("plot5"),
+                  plotOutput("plot6")
+                   )
+           )
+         )
+               
+      ),
+    tabPanel("Test Results",
+        verticalLayout(
+          fluidRow(
+            
+            column(width=4,
+                   plotOutput("roc1")
+                   ),
+            column(width=4,  
+                   plotOutput("roc2")
+                   ),
+            column(width=4,
+                   plotOutput("roc3")
+                   )
+          ),
+          
+          fluidRow(
+            column(width=4,
+                   plotOutput("roc4")
+                   ),
+            column(width=4,  
+                   plotOutput("roc5")
+                   ),
+            column(width=4,
+                   plotOutput("roc6")
+                   )
+          )
+        )
+      
+    )
+     
+  )
+)
+server <- function(input, output, session){
+    output$plot1 <- renderPlot({
+          ggplot(tloss2, aes( x = epoch, y = train_loss))+ geom_line()+ ggtitle("Train Loss Function")
+          })
+    output$plot2 <- renderPlot({
+        ggplot(vloss2, aes( x = epoch, y = valid_loss))+ geom_line()+ ggtitle("Valid Loss Function")
+    })
+    
+    output$plot4 <- renderPlot({
+        xvbloss2 <- vbloss2 %>% filter(epoch == input$epoch)
+        ggplot(xvbloss2, aes( x = batch, y = loss))+ geom_line() + ggtitle("Valid Loss")
+    })
+
+    output$plot3 <- renderPlot({
+        xtbloss2 <- tbloss2 %>% filter(epoch == input$epoch)
+        ggplot(xtbloss2, aes( x = batch, y = loss))+ geom_line() + ggtitle("Train Loss")
+    })
+    
+    output$plot6 <- renderPlot({
+        xvbloss2 <- vbloss2 %>% filter(epoch == input$epoch2)
+        ggplot(xvbloss2, aes( x = batch, y = acc))+ geom_line() + ggtitle("By Epoch")
+    })
+
+    output$plot5 <- renderPlot({
+       ggplot(vloss2, aes( x = epoch, y = valid_acc))+ geom_line()+ ggtitle("By Batch")
+    })
+    
+    output$roc1 <- renderPlot({
+      pROC_any <- roc(
+            target2$any, predicted2$any,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_any <- ci.se(pROC_any)
+
+      
+       title(main="Any")
+       plot(sens.ci_any, type="shape", col="lightblue")
+
+    })
+    
+    output$roc2 <- renderPlot({
+      pROC_epidural <- roc(
+            target2$epidural, predicted2$epidural,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_epidural <- ci.se(pROC_epidural)
+
+      
+       title(main="Epidural")
+       plot(sens.ci_epidural, type="shape", col="lightblue")
+
+    })
+    
+    output$roc3 <- renderPlot({
+      pROC_intraparenchymal <- roc(
+            target2$intraparenchymal, predicted2$intraparenchymal,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_intraparenchymal <- ci.se(pROC_intraparenchymal)
+
+      
+       title(main="Intraparenchymal")
+       plot(sens.ci_intraparenchymal, type="shape", col="lightblue")
+
+    })
+
+    output$roc4 <- renderPlot({
+      pROC_intraventricular <- roc(
+            target2$intraventricular, predicted2$intraventricular,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_intraventricular <- ci.se(pROC_intraventricular)
+
+      
+       title(main="Intraventricular")
+       plot(sens.ci_intraventricular, type="shape", col="lightblue")
+
+    })
+
+    output$roc5 <- renderPlot({
+      pROC_subarachnoid <- roc(
+            target2$subarachnoid, predicted2$subarachnoid,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_subarachnoid <- ci.se(pROC_subarachnoid)
+
+      
+       title(main="Subarachnoid")
+       plot(sens.ci_subarachnoid, type="shape", col="lightblue")
+
+    })
+
+    output$roc6 <- renderPlot({
+      pROC_subdural <- roc(
+            target2$subdural, predicted2$subdural,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+      sens.ci_subdural <- ci.se(pROC_subdural)
+
+      
+       title(main="Subdural")
+       plot(sens.ci_subdural, type="shape", col="lightblue")
+
+    })
+            
+    }
+shinyApp(ui = ui, server = server)
+
+```
+
+## Results and Conclusions
+- Batches of 15 or 10 images gave better results
+- The prototype shows that two models are a good approach
+- The use of the function loss in the validation phase is not a good option
+- The accuracy and other metrics are necessary to evaluate the model
+- The number of images use in "Any" category shows a good metric for sampling the other clases
+- It is important to include feature enhancing on the model
+- The prototype is ready to go into second phase 
+    - Modification Data Augmentation and Sampling
+    - Fine tunning 
+    - Including InceptionV3
+
+## Leasons Learned 
+
+- Good resarch can help avoid mistakes and learn new techniques to include in our models
+- Good presentation of metrics helps in the decision process
+- Pytorch is very helpful to include controls in the model
+- Learn about memory usage of GPUs is important to design Network architectures
+
+
