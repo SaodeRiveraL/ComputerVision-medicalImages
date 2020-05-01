@@ -17,6 +17,7 @@ The project is a composed by two models, the first model is training on set of a
 Each script has the following variables at the beginning 
 
 IMAGE_DIR = '/home/ubuntu/dataproject/rsna-intracranial-hemorrhage-detection/stage_2_train/'
+
 FILE_DIR = '/home/ubuntu/dataproject/rsna-intracranial-hemorrhage-detection/'
 
 IMAGE_DIR contains the path to the image dataset
